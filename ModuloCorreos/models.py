@@ -166,3 +166,47 @@ class DocumentoLegal(models.Model):
 
     def __str__(self):
         return self.titulo
+
+class CorreoEnviado(models.Model):
+    message_id      = models.CharField(max_length=500, unique=True)
+    in_reply_to     = models.CharField(max_length=500, blank=True)
+    para            = models.TextField(blank=True)
+    asunto          = models.CharField(max_length=1000, blank=True)
+    fecha           = models.DateTimeField(null=True, blank=True)
+    cuerpo          = models.TextField(blank=True)
+    tiene_adjuntos  = models.BooleanField(default=False)
+    nombres_adjuntos= models.TextField(blank=True)
+    uid_imap        = models.IntegerField(db_index=True)
+    tema            = models.CharField(max_length=30, blank=True)
+    creado_en       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f"→ {self.para[:50]} | {self.asunto[:50]}"
+
+
+class ParConversacion(models.Model):
+    """
+    Par solicitud → respuesta.
+    Base del entrenamiento de la IA para aprender cómo responde la oficina.
+    """
+    correo_recibido = models.ForeignKey(
+        CorreoCopia, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='pares_como_solicitud'
+    )
+    correo_enviado  = models.ForeignKey(
+        CorreoEnviado, on_delete=models.CASCADE,
+        related_name='pares_como_respuesta'
+    )
+    remitente_email = models.CharField(max_length=200, blank=True)
+    tema            = models.CharField(max_length=30, blank=True)
+    es_respuesta    = models.BooleanField(default=False)
+    creado_en       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado_en']
+
+    def __str__(self):
+        return f"Par [{self.tema}] → {self.remitente_email}"

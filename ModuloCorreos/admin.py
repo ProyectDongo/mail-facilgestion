@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import CuentaIMAP, SyncEstado, PerfilRemitente, CorreoCopia, DocumentoLegal
+from .models import CuentaIMAP, SyncEstado, PerfilRemitente, CorreoCopia, DocumentoLegal ,CorreoEnviado, ParConversacion
 
 @admin.register(CuentaIMAP)
 class CuentaIMAPAdmin(admin.ModelAdmin):
@@ -26,3 +26,16 @@ class DocumentoLegalAdmin(admin.ModelAdmin):
     list_display  = ['titulo', 'tipo', 'activo', 'subido_en']
     search_fields = ['titulo', 'descripcion', 'tags', 'contenido']
     list_filter   = ['tipo', 'activo']
+
+
+@admin.register(CorreoEnviado)
+class CorreoEnviadoAdmin(admin.ModelAdmin):
+    list_display  = ['asunto', 'para', 'fecha', 'tema']
+    search_fields = ['asunto', 'para', 'cuerpo']
+    list_filter   = ['tema']
+
+@admin.register(ParConversacion)
+class ParConversacionAdmin(admin.ModelAdmin):
+    list_display  = ['tema', 'remitente_email', 'es_respuesta', 'creado_en']
+    search_fields = ['remitente_email', 'tema']
+    list_filter   = ['tema', 'es_respuesta']
