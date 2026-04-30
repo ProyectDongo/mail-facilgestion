@@ -164,6 +164,9 @@ def sincronizar_imap():
 
 @shared_task(name='ModuloCorreos.tasks.clasificar_pendientes')
 def clasificar_pendientes():
+    import re as _re
+    from datetime import timedelta
+    from django.utils import timezone
     from .clasificador import (
         detectar_tema, detectar_tono, generar_resumen,
         es_pendiente, actualizar_perfil, detectar_tipo_remitente,
@@ -175,15 +178,34 @@ def clasificar_pendientes():
         'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es',
     ]
 
+    # Prefijos de respuesta a eliminar del asunto antes de clasificar
+    PREFIJOS_RE = _re.compile(
+        r'^(re|rv|rr|fw|fwd|reenviado|respuesta|resp)[\s:\-]+',
+        _re.IGNORECASE
+    )
+
+    LIMITE_PENDIENTE = timezone.now() - timedelta(days=30)
+
     correos = CorreoCopia.objects.filter(clasificado=False).select_related('remitente')[:200]
     procesados = 0
     perfiles_afectados = set()
 
     for correo in correos:
-        correo.tema         = detectar_tema(correo.asunto, correo.cuerpo)
-        correo.tono         = detectar_tono(correo.asunto, correo.cuerpo)
-        correo.resumen      = generar_resumen(correo.asunto, correo.cuerpo)
-        correo.es_pendiente = es_pendiente(correo.asunto, correo.cuerpo)
+        # Limpia prefijos RE:/RV: para mejorar clasificación de respuestas
+        asunto_limpio = PREFIJOS_RE.sub('', correo.asunto).strip()
+
+        correo.tema    = detectar_tema(asunto_limpio, correo.cuerpo)
+        correo.tono    = detectar_tono(asunto_limpio, correo.cuerpo)
+        correo.resumen = generar_resumen(asunto_limpio, correo.cuerpo)
+
+        # Pendiente solo si:
+        # 1. Tiene keywords de urgencia, Y
+        # 2. El correo tiene menos de 30 días
+        es_reciente = (
+            correo.fecha is None or
+            correo.fecha >= LIMITE_PENDIENTE
+        )
+        correo.es_pendiente = es_reciente and es_pendiente(asunto_limpio, correo.cuerpo)
         correo.clasificado  = True
         correo.save()
 
