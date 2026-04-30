@@ -20,4 +20,6 @@ urlpatterns = [
 
     # Endpoint principal para IAs
     path('ia/',                    views.contexto_ia,   name='correos_ia'),
+    
+    path('pares/', views.pares_entrenamiento, name='correos_pares'),
 ]

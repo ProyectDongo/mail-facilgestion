@@ -72,6 +72,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'ModuloCorreos.tasks.clasificar_pendientes',
         'schedule': 60.0,
     },
+    'sincronizar-enviados': {
+    'task': 'ModuloCorreos.tasks.sincronizar_enviados',
+    'schedule': 300.0,
+    },
 }
 
 # IMAP

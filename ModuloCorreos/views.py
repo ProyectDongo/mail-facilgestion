@@ -348,3 +348,55 @@ def _serializar_perfil_completo(p):
         'temas_frecuentes': temas,
         'ultima_solicitud': p.ultima_solicitud,
     }
+
+
+def pares_entrenamiento(request):
+    """
+    Devuelve pares solicitud→respuesta para entrenar IAs.
+    Parámetros:
+      - tema: filtrar por tema
+      - q: buscar por texto
+      - limit: máximo resultados (default 10)
+    """
+    tema  = request.GET.get('tema', '').strip()
+    q     = request.GET.get('q', '').strip()
+    limit = min(int(request.GET.get('limit', 10)), 50)
+
+    from .models import ParConversacion
+    qs = ParConversacion.objects.select_related(
+        'correo_recibido', 'correo_enviado',
+        'correo_recibido__remitente'
+    ).filter(es_respuesta=True)
+
+    if tema:
+        qs = qs.filter(tema=tema)
+    if q:
+        qs = qs.filter(
+            Q(correo_recibido__asunto__icontains=q) |
+            Q(correo_enviado__asunto__icontains=q) |
+            Q(remitente_email__icontains=q)
+        )
+
+    pares = qs.order_by('-creado_en')[:limit]
+
+    return JsonResponse({
+        'total': qs.count(),
+        'pares': [
+            {
+                'tema': p.tema,
+                'cliente': p.remitente_email,
+                'solicitud': {
+                    'asunto': p.correo_recibido.asunto if p.correo_recibido else '',
+                    'cuerpo': p.correo_recibido.resumen if p.correo_recibido else '',
+                    'fecha': str(p.correo_recibido.fecha) if p.correo_recibido else '',
+                } if p.correo_recibido else None,
+                'respuesta': {
+                    'asunto': p.correo_enviado.asunto,
+                    'cuerpo': p.correo_enviado.cuerpo[:600],
+                    'tiene_adjuntos': p.correo_enviado.tiene_adjuntos,
+                    'adjuntos': p.correo_enviado.nombres_adjuntos,
+                },
+            }
+            for p in pares
+        ],
+    })

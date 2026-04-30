@@ -280,3 +280,124 @@ def reparar_nombres():
                 reparados += 1
 
     return f"{reparados} nombres reparados"
+
+
+@shared_task(name='ModuloCorreos.tasks.sincronizar_enviados')
+def sincronizar_enviados():
+    from .clasificador import detectar_tema, extraer_nombre
+    from .models import CorreoEnviado, ParConversacion
+
+    estado, _ = SyncEstado.objects.get_or_create(id=1)
+    batch_size = settings.IMAP_BATCH_SIZE
+    nuevos = 0
+
+    try:
+        imap = imaplib.IMAP4_SSL(settings.IMAP_HOST, settings.IMAP_PORT)
+        imap.login(settings.IMAP_USER, settings.IMAP_PASSWORD)
+        imap.select('INBOX.Sent', readonly=True)
+
+        _, datos = imap.uid('search', None, 'ALL')
+        todos_uids = [int(u) for u in datos[0].split()]
+
+        # Solo los que no tenemos
+        uids_existentes = set(
+            CorreoEnviado.objects.values_list('uid_imap', flat=True)
+        )
+        pendientes = [u for u in todos_uids if u not in uids_existentes]
+        lote = pendientes[:batch_size]
+
+        for uid in lote:
+            try:
+                _, data = imap.uid('fetch', str(uid), '(RFC822)')
+                if not data or not data[0]:
+                    continue
+                raw = data[0][1]
+                msg = email.message_from_bytes(raw)
+
+                message_id  = msg.get('Message-ID', f'sent-{uid}').strip()
+                in_reply_to = msg.get('In-Reply-To', '').strip()
+
+                if CorreoEnviado.objects.filter(message_id=message_id).exists():
+                    continue
+
+                asunto   = decodificar(msg.get('Subject', ''))
+                para_raw = decodificar(msg.get('To', ''))
+                cuerpo   = extraer_cuerpo(msg)
+                tiene_adj, nombres_adj = extraer_adjuntos(msg)
+
+                fecha_str = msg.get('Date', '')
+                fecha_dt  = None
+                try:
+                    fecha_dt = email.utils.parsedate_to_datetime(fecha_str)
+                    if not is_aware(fecha_dt):
+                        fecha_dt = make_aware(fecha_dt)
+                except Exception:
+                    pass
+
+                import re as _re
+                asunto_limpio = _re.sub(
+                    r'^(re|rv|rr|fw|fwd)[\s:\-]+', '', asunto,
+                    flags=_re.IGNORECASE
+                ).strip()
+                tema = detectar_tema(asunto_limpio, cuerpo)
+
+                enviado = CorreoEnviado.objects.create(
+                    message_id=message_id,
+                    in_reply_to=in_reply_to,
+                    para=para_raw,
+                    asunto=asunto,
+                    fecha=fecha_dt,
+                    cuerpo=cuerpo,
+                    tiene_adjuntos=tiene_adj,
+                    nombres_adjuntos=nombres_adj,
+                    uid_imap=uid,
+                    tema=tema,
+                )
+
+                # Emparejar con correo recibido si es respuesta
+                if in_reply_to:
+                    recibido = CorreoCopia.objects.filter(
+                        message_id=in_reply_to
+                    ).first()
+                    email_cliente = ''
+                    if recibido and recibido.remitente:
+                        email_cliente = recibido.remitente.email
+                    else:
+                        _, email_cliente = email.utils.parseaddr(para_raw)
+                        email_cliente = email_cliente.lower()
+
+                    ParConversacion.objects.get_or_create(
+                        correo_enviado=enviado,
+                        defaults={
+                            'correo_recibido': recibido,
+                            'remitente_email': email_cliente,
+                            'tema': tema,
+                            'es_respuesta': True,
+                        }
+                    )
+                else:
+                    # Enviado sin reply — iniciativa de la oficina
+                    _, email_cliente = email.utils.parseaddr(para_raw)
+                    ParConversacion.objects.get_or_create(
+                        correo_enviado=enviado,
+                        defaults={
+                            'correo_recibido': None,
+                            'remitente_email': email_cliente.lower(),
+                            'tema': tema,
+                            'es_respuesta': False,
+                        }
+                    )
+
+                nuevos += 1
+
+            except Exception as e:
+                print(f"[SENT] Error UID {uid}: {e}")
+                continue
+
+        imap.logout()
+
+    except Exception as e:
+        print(f"[SENT] Error conexión: {e}")
+        return f"Error: {e}"
+
+    return f"{nuevos} enviados nuevos — {len(pendientes) - batch_size} pendientes"
