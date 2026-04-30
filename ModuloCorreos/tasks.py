@@ -63,12 +63,8 @@ def sincronizar_imap():
         imap.login(settings.IMAP_USER, settings.IMAP_PASSWORD)
         imap.select('INBOX', readonly=True)
 
-        # Buscar solo UIDs mayores al último procesado
-        criterio = f'UID {ultimo_uid + 1}:*' if ultimo_uid else 'ALL'
         _, datos = imap.uid('search', None, 'ALL')
         todos_uids = [int(u) for u in datos[0].split() if int(u) > ultimo_uid]
-
-        # Procesar en lote
         lote = todos_uids[:batch_size]
 
         for uid in lote:
@@ -140,3 +136,46 @@ def sincronizar_imap():
     estado.ultimo_uid = ultimo_uid
     estado.save()
     return f"{nuevos} nuevos — último UID: {ultimo_uid} — pendientes: {len(todos_uids) - batch_size}"
+
+
+@shared_task(name='ModuloCorreos.tasks.clasificar_pendientes')
+def clasificar_pendientes():
+    from .clasificador import (
+        detectar_tema, detectar_tono, generar_resumen,
+        es_pendiente, actualizar_perfil, detectar_tipo_remitente
+    )
+
+    DOMINIOS_PERSONALES = [
+        'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com',
+        'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es'
+    ]
+
+    correos = CorreoCopia.objects.filter(clasificado=False).select_related('remitente')[:200]
+    procesados = 0
+    perfiles_afectados = set()
+
+    for correo in correos:
+        correo.tema       = detectar_tema(correo.asunto, correo.cuerpo)
+        correo.tono       = detectar_tono(correo.asunto, correo.cuerpo)
+        correo.resumen    = generar_resumen(correo.asunto, correo.cuerpo)
+        correo.es_pendiente = es_pendiente(correo.asunto, correo.cuerpo)
+        correo.clasificado  = True
+        correo.save()
+
+        if correo.remitente:
+            perfiles_afectados.add(correo.remitente.id)
+        procesados += 1
+
+    for pid in perfiles_afectados:
+        try:
+            perfil = PerfilRemitente.objects.get(id=pid)
+            perfil.tipo = detectar_tipo_remitente(perfil.email, perfil.dominio)
+            perfil.es_empresa = (
+                perfil.dominio not in DOMINIOS_PERSONALES and bool(perfil.dominio)
+            )
+            correos_perfil = list(CorreoCopia.objects.filter(remitente=perfil))
+            actualizar_perfil(perfil, correos_perfil)
+        except Exception as e:
+            print(f"[CLASIFICADOR] Error perfil {pid}: {e}")
+
+    return f"{procesados} correos clasificados"

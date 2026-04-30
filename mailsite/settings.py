@@ -22,6 +22,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -65,7 +66,11 @@ CELERY_TIMEZONE = 'America/Santiago'
 CELERY_BEAT_SCHEDULE = {
     'sincronizar-imap': {
         'task': 'ModuloCorreos.tasks.sincronizar_imap',
-        'schedule': 300.0,   # cada 5 minutos
+        'schedule': 300.0,
+    },
+    'clasificar-correos': {
+        'task': 'ModuloCorreos.tasks.clasificar_pendientes',
+        'schedule': 60.0,
     },
 }
 
@@ -84,3 +89,5 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
