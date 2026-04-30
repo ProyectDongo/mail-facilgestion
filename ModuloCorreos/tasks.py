@@ -51,6 +51,22 @@ def extraer_adjuntos(msg):
     return tiene, ', '.join(nombres)
 
 
+def extraer_nombre(nombre_raw: str, email_addr: str) -> str:
+    """
+    Extrae el nombre real del remitente.
+    Si el display name es igual al email o contiene @, lo descarta.
+    Capitaliza correctamente nombres en MAYÚSCULAS.
+    """
+    from .clasificador import limpiar_nombre
+    nombre = limpiar_nombre(nombre_raw, email_addr)
+    if not nombre:
+        return ''
+    # Si está todo en mayúsculas, lo convierte a Title Case
+    if nombre == nombre.upper() and len(nombre) > 3:
+        nombre = nombre.title()
+    return nombre
+
+
 @shared_task(name='ModuloCorreos.tasks.sincronizar_imap')
 def sincronizar_imap():
     estado, _ = SyncEstado.objects.get_or_create(id=1)
@@ -90,12 +106,20 @@ def sincronizar_imap():
                 email_r  = (email_r or f'uid{uid}@desconocido').lower()
                 dominio  = email_r.split('@')[-1] if '@' in email_r else ''
 
+                # Limpia el nombre antes de guardar
+                nombre_limpio = extraer_nombre(nombre_r, email_r)
+
                 perfil, created = PerfilRemitente.objects.get_or_create(
                     email=email_r,
-                    defaults={'nombre': nombre_r, 'dominio': dominio}
+                    defaults={
+                        'nombre': nombre_limpio,
+                        'dominio': dominio,
+                    }
                 )
-                if not created and not perfil.nombre and nombre_r:
-                    perfil.nombre = nombre_r
+                # Actualiza nombre si antes estaba vacío o era el email
+                if not created:
+                    if (not perfil.nombre or perfil.nombre == email_r) and nombre_limpio:
+                        perfil.nombre = nombre_limpio
                 perfil.total_correos += 1
                 perfil.save()
 
@@ -142,12 +166,13 @@ def sincronizar_imap():
 def clasificar_pendientes():
     from .clasificador import (
         detectar_tema, detectar_tono, generar_resumen,
-        es_pendiente, actualizar_perfil, detectar_tipo_remitente
+        es_pendiente, actualizar_perfil, detectar_tipo_remitente,
+        limpiar_nombre,
     )
 
     DOMINIOS_PERSONALES = [
         'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com',
-        'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es'
+        'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es',
     ]
 
     correos = CorreoCopia.objects.filter(clasificado=False).select_related('remitente')[:200]
@@ -155,9 +180,9 @@ def clasificar_pendientes():
     perfiles_afectados = set()
 
     for correo in correos:
-        correo.tema       = detectar_tema(correo.asunto, correo.cuerpo)
-        correo.tono       = detectar_tono(correo.asunto, correo.cuerpo)
-        correo.resumen    = generar_resumen(correo.asunto, correo.cuerpo)
+        correo.tema         = detectar_tema(correo.asunto, correo.cuerpo)
+        correo.tono         = detectar_tono(correo.asunto, correo.cuerpo)
+        correo.resumen      = generar_resumen(correo.asunto, correo.cuerpo)
         correo.es_pendiente = es_pendiente(correo.asunto, correo.cuerpo)
         correo.clasificado  = True
         correo.save()
@@ -173,9 +198,63 @@ def clasificar_pendientes():
             perfil.es_empresa = (
                 perfil.dominio not in DOMINIOS_PERSONALES and bool(perfil.dominio)
             )
+            # Intenta recuperar nombre si aún está vacío o es el email
+            if not perfil.nombre or perfil.nombre == perfil.email:
+                nombre_candidate = limpiar_nombre(
+                    perfil.nombre or '', perfil.email
+                )
+                if nombre_candidate:
+                    perfil.nombre = nombre_candidate
+
             correos_perfil = list(CorreoCopia.objects.filter(remitente=perfil))
             actualizar_perfil(perfil, correos_perfil)
         except Exception as e:
             print(f"[CLASIFICADOR] Error perfil {pid}: {e}")
 
     return f"{procesados} correos clasificados"
+
+
+@shared_task(name='ModuloCorreos.tasks.reparar_nombres')
+def reparar_nombres():
+    """
+    Tarea puntual: recorre todos los perfiles sin nombre y
+    lo intenta extraer del campo 'de' del último correo recibido.
+    """
+    import email.utils as eu
+    from .clasificador import limpiar_nombre
+
+    perfiles_sin_nombre = PerfilRemitente.objects.filter(
+        nombre=''
+    ) | PerfilRemitente.objects.filter(nombre=None)
+
+    # También los que tienen el email como nombre
+    reparados = 0
+    for perfil in perfiles_sin_nombre:
+        ultimo = CorreoCopia.objects.filter(remitente=perfil).order_by('-fecha').first()
+        if not ultimo:
+            continue
+        nombre_raw, _ = eu.parseaddr(ultimo.de)
+        nombre_limpio = limpiar_nombre(nombre_raw, perfil.email)
+        if nombre_limpio:
+            if nombre_limpio == nombre_limpio.upper() and len(nombre_limpio) > 3:
+                nombre_limpio = nombre_limpio.title()
+            perfil.nombre = nombre_limpio
+            perfil.save()
+            reparados += 1
+
+    # También repara los que tienen email como nombre
+    for perfil in PerfilRemitente.objects.all():
+        if perfil.nombre and '@' in perfil.nombre:
+            ultimo = CorreoCopia.objects.filter(remitente=perfil).order_by('-fecha').first()
+            if not ultimo:
+                continue
+            nombre_raw, _ = eu.parseaddr(ultimo.de)
+            nombre_limpio = limpiar_nombre(nombre_raw, perfil.email)
+            if nombre_limpio:
+                if nombre_limpio == nombre_limpio.upper() and len(nombre_limpio) > 3:
+                    nombre_limpio = nombre_limpio.title()
+                perfil.nombre = nombre_limpio
+                perfil.save()
+                reparados += 1
+
+    return f"{reparados} nombres reparados"
