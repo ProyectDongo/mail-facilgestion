@@ -1,5 +1,4 @@
-from django.apps import AppConfig
-
-
-class ModulocorreosConfig(AppConfig):
-    name = 'ModuloCorreos'
+import os
+from django.core.wsgi import get_wsgi_application
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mailsite.settings')
+application = get_wsgi_application()
