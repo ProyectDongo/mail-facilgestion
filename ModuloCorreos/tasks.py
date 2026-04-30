@@ -52,16 +52,10 @@ def extraer_adjuntos(msg):
 
 
 def extraer_nombre(nombre_raw: str, email_addr: str) -> str:
-    """
-    Extrae el nombre real del remitente.
-    Si el display name es igual al email o contiene @, lo descarta.
-    Capitaliza correctamente nombres en MAYÚSCULAS.
-    """
     from .clasificador import limpiar_nombre
     nombre = limpiar_nombre(nombre_raw, email_addr)
     if not nombre:
         return ''
-    # Si está todo en mayúsculas, lo convierte a Title Case
     if nombre == nombre.upper() and len(nombre) > 3:
         nombre = nombre.title()
     return nombre
@@ -106,7 +100,6 @@ def sincronizar_imap():
                 email_r  = (email_r or f'uid{uid}@desconocido').lower()
                 dominio  = email_r.split('@')[-1] if '@' in email_r else ''
 
-                # Limpia el nombre antes de guardar
                 nombre_limpio = extraer_nombre(nombre_r, email_r)
 
                 perfil, created = PerfilRemitente.objects.get_or_create(
@@ -116,7 +109,6 @@ def sincronizar_imap():
                         'dominio': dominio,
                     }
                 )
-                # Actualiza nombre si antes estaba vacío o era el email
                 if not created:
                     if (not perfil.nombre or perfil.nombre == email_r) and nombre_limpio:
                         perfil.nombre = nombre_limpio
@@ -178,7 +170,6 @@ def clasificar_pendientes():
         'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es',
     ]
 
-    # Prefijos de respuesta a eliminar del asunto antes de clasificar
     PREFIJOS_RE = _re.compile(
         r'^(re|rv|rr|fw|fwd|reenviado|respuesta|resp)[\s:\-]+',
         _re.IGNORECASE
@@ -191,16 +182,12 @@ def clasificar_pendientes():
     perfiles_afectados = set()
 
     for correo in correos:
-        # Limpia prefijos RE:/RV: para mejorar clasificación de respuestas
         asunto_limpio = PREFIJOS_RE.sub('', correo.asunto).strip()
 
         correo.tema    = detectar_tema(asunto_limpio, correo.cuerpo)
         correo.tono    = detectar_tono(asunto_limpio, correo.cuerpo)
         correo.resumen = generar_resumen(asunto_limpio, correo.cuerpo)
 
-        # Pendiente solo si:
-        # 1. Tiene keywords de urgencia, Y
-        # 2. El correo tiene menos de 30 días
         es_reciente = (
             correo.fecha is None or
             correo.fecha >= LIMITE_PENDIENTE
@@ -220,7 +207,6 @@ def clasificar_pendientes():
             perfil.es_empresa = (
                 perfil.dominio not in DOMINIOS_PERSONALES and bool(perfil.dominio)
             )
-            # Intenta recuperar nombre si aún está vacío o es el email
             if not perfil.nombre or perfil.nombre == perfil.email:
                 nombre_candidate = limpiar_nombre(
                     perfil.nombre or '', perfil.email
@@ -238,10 +224,6 @@ def clasificar_pendientes():
 
 @shared_task(name='ModuloCorreos.tasks.reparar_nombres')
 def reparar_nombres():
-    """
-    Tarea puntual: recorre todos los perfiles sin nombre y
-    lo intenta extraer del campo 'de' del último correo recibido.
-    """
     import email.utils as eu
     from .clasificador import limpiar_nombre
 
@@ -249,7 +231,6 @@ def reparar_nombres():
         nombre=''
     ) | PerfilRemitente.objects.filter(nombre=None)
 
-    # También los que tienen el email como nombre
     reparados = 0
     for perfil in perfiles_sin_nombre:
         ultimo = CorreoCopia.objects.filter(remitente=perfil).order_by('-fecha').first()
@@ -264,7 +245,6 @@ def reparar_nombres():
             perfil.save()
             reparados += 1
 
-    # También repara los que tienen email como nombre
     for perfil in PerfilRemitente.objects.all():
         if perfil.nombre and '@' in perfil.nombre:
             ultimo = CorreoCopia.objects.filter(remitente=perfil).order_by('-fecha').first()
@@ -284,11 +264,11 @@ def reparar_nombres():
 
 @shared_task(name='ModuloCorreos.tasks.sincronizar_enviados')
 def sincronizar_enviados():
-    from .clasificador import detectar_tema, extraer_nombre
+    import re as _re
+    from .clasificador import detectar_tema
     from .models import CorreoEnviado, ParConversacion
 
-    estado, _ = SyncEstado.objects.get_or_create(id=1)
-    batch_size = settings.IMAP_BATCH_SIZE
+    batch_size = 200
     nuevos = 0
 
     try:
@@ -299,42 +279,54 @@ def sincronizar_enviados():
         _, datos = imap.uid('search', None, 'ALL')
         todos_uids = [int(u) for u in datos[0].split()]
 
-        # Solo los que no tenemos
-        uids_existentes = set(
-            CorreoEnviado.objects.values_list('uid_imap', flat=True)
-        )
+        uids_existentes = set(CorreoEnviado.objects.values_list('uid_imap', flat=True))
         pendientes = [u for u in todos_uids if u not in uids_existentes]
         lote = pendientes[:batch_size]
 
-        for uid in lote:
+        if not lote:
+            imap.logout()
+            return "0 pendientes"
+
+        # Fetch en bloque — una sola llamada IMAP para todo el lote
+        uids_str = ','.join(str(u) for u in lote)
+        _, data = imap.uid('fetch', uids_str, '(RFC822)')
+
+        i = 0
+        uid_idx = 0
+        while i < len(data):
+            if not data[i] or not isinstance(data[i], tuple):
+                i += 1
+                continue
             try:
-                _, data = imap.uid('fetch', str(uid), '(RFC822)')
-                if not data or not data[0]:
-                    continue
-                raw = data[0][1]
+                raw = data[i][1]
                 msg = email.message_from_bytes(raw)
+
+                # Extraer UID del header de respuesta IMAP
+                uid_header = data[i][0].decode()
+                uid_match = _re.search(r'\(UID (\d+)', uid_header)
+                uid = int(uid_match.group(1)) if uid_match else lote[uid_idx]
 
                 message_id  = msg.get('Message-ID', f'sent-{uid}').strip()
                 in_reply_to = msg.get('In-Reply-To', '').strip()
 
                 if CorreoEnviado.objects.filter(message_id=message_id).exists():
+                    i += 1
+                    uid_idx += 1
                     continue
 
-                asunto   = decodificar(msg.get('Subject', ''))
-                para_raw = decodificar(msg.get('To', ''))
-                cuerpo   = extraer_cuerpo(msg)
+                asunto    = decodificar(msg.get('Subject', ''))
+                para_raw  = decodificar(msg.get('To', ''))
+                cuerpo    = extraer_cuerpo(msg)
                 tiene_adj, nombres_adj = extraer_adjuntos(msg)
 
-                fecha_str = msg.get('Date', '')
-                fecha_dt  = None
+                fecha_dt = None
                 try:
-                    fecha_dt = email.utils.parsedate_to_datetime(fecha_str)
+                    fecha_dt = email.utils.parsedate_to_datetime(msg.get('Date', ''))
                     if not is_aware(fecha_dt):
                         fecha_dt = make_aware(fecha_dt)
                 except Exception:
                     pass
 
-                import re as _re
                 asunto_limpio = _re.sub(
                     r'^(re|rv|rr|fw|fwd)[\s:\-]+', '', asunto,
                     flags=_re.IGNORECASE
@@ -354,12 +346,8 @@ def sincronizar_enviados():
                     tema=tema,
                 )
 
-                # Emparejar con correo recibido si es respuesta
                 if in_reply_to:
-                    recibido = CorreoCopia.objects.filter(
-                        message_id=in_reply_to
-                    ).first()
-                    email_cliente = ''
+                    recibido = CorreoCopia.objects.filter(message_id=in_reply_to).first()
                     if recibido and recibido.remitente:
                         email_cliente = recibido.remitente.email
                     else:
@@ -376,7 +364,6 @@ def sincronizar_enviados():
                         }
                     )
                 else:
-                    # Enviado sin reply — iniciativa de la oficina
                     _, email_cliente = email.utils.parseaddr(para_raw)
                     ParConversacion.objects.get_or_create(
                         correo_enviado=enviado,
@@ -391,8 +378,10 @@ def sincronizar_enviados():
                 nuevos += 1
 
             except Exception as e:
-                print(f"[SENT] Error UID {uid}: {e}")
-                continue
+                print(f"[SENT] Error idx {i}: {e}")
+
+            i += 1
+            uid_idx += 1
 
         imap.logout()
 
@@ -400,4 +389,5 @@ def sincronizar_enviados():
         print(f"[SENT] Error conexión: {e}")
         return f"Error: {e}"
 
-    return f"{nuevos} enviados nuevos — {len(pendientes) - batch_size} pendientes"
+    restantes = max(len(pendientes) - batch_size, 0)
+    return f"{nuevos} enviados nuevos — {restantes} pendientes"
