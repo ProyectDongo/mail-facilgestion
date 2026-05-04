@@ -5,175 +5,405 @@ import datetime
 DOMINIO_INTERNO = 'micontable.cl'
 
 # ─────────────────────────────────────────────
-# KEYWORDS — solo frases específicas, no palabras sueltas genéricas
-# Las keywords cortas que aparecen en firmas (iva, rut, sii) se
-# reemplazaron por frases más específicas para evitar falsos positivos
+# KEYWORDS — versión expandida para lenguaje real de clientes
+#
+# CRITERIO: Los correos reales son cortos e informales.
+# "adjunto liquidacion de marzo", "necesito el contrato de juan",
+# "favor emitir factura" — el clasificador anterior los perdía todos.
+#
+# ESTRATEGIA:
+#   - Keywords cortas que matchean lenguaje cotidiano
+#   - Frases largas para contextos específicos
+#   - Separamos keywords de ASUNTO (mayor peso) vs CUERPO
 # ─────────────────────────────────────────────
+
 TEMAS_KEYWORDS = {
-    # Tributario — frases específicas, no palabras sueltas
+
+    # ── TRIBUTARIO ─────────────────────────────────────────────────────
+
     'f29': [
-        'formulario 29', 'f-29', 'declaracion de iva', 'declaracion iva',
+        # Frases específicas
+        'formulario 29', 'f-29', 'f 29',
+        'declaracion de iva', 'declaracion iva', 'pago de iva', 'pago iva',
         'impuesto al valor agregado', 'debito fiscal', 'credito fiscal',
-        'declaracion mensual de impuestos', 'pago de iva',
+        'declaracion mensual de impuestos', 'declaracion mensual',
+        # Cortas pero con contexto suficiente
+        'propuesta f29', 'f29 del mes', 'f29 de',
+        'iva del mes', 'iva de este mes', 'iva pendiente',
+        'impuesto mensual',
     ],
+
     'f22': [
-        'formulario 22', 'f-22', 'declaracion de renta', 'operacion renta',
-        'impuesto a la renta anual', 'declaracion anual de impuestos',
-        'renta anual', 'impuesto renta',
+        'formulario 22', 'f-22', 'f 22',
+        'declaracion de renta', 'operacion renta', 'renta anual',
+        'impuesto a la renta', 'impuesto renta', 'declaracion anual',
+        'renta de personas', 'renta de la empresa',
+        'propuesta f22', 'f22 del año',
+        'devolución de impuestos', 'devolucion de impuestos',
+        'declaracion anual de impuestos',
     ],
+
     'ppm': [
-        'ppm', 'pago provisional mensual', 'pagos provisionales mensuales',
+        'ppm', 'pago provisional', 'pagos provisionales',
+        'pago provisional mensual', 'pagos provisionales mensuales',
+        'ppm del mes', 'ppm pendiente',
     ],
+
     'sii': [
-        'servicio de impuestos internos', 'timbre electronico',
-        'folio de factura', 'contribuyente de iva', 'inicio de actividades sii',
-        'boleta electronica', 'factura electronica', 'notificacion sii',
-        'resolucion sii', 'fiscalizacion sii',
+        'servicio de impuestos internos',
+        'timbre electronico', 'folio de factura', 'folios',
+        'inicio de actividades sii', 'inicio de actividades en el sii',
+        'boleta electronica', 'factura electronica',
+        'notificacion sii', 'resolucion sii', 'fiscalizacion sii',
+        'rut de la empresa', 'rut empresa', 'tramite en sii',
+        'sii notifica', 'carta del sii', 'citacion sii',
+        'contribuyente', 'registro de compras', 'registro de ventas',
+        'clave tributaria', 'clave sii',
     ],
+
     'tgr': [
-        'tesoreria general', 'tgr', 'deuda fiscal', 'convenio de pago fiscal',
-        'pago en tesoreria',
+        'tesoreria general', 'tgr', 'deuda fiscal',
+        'convenio de pago fiscal', 'pago en tesoreria',
+        'pago a tesoreria', 'deuda tesoreria',
+        'morosidad fiscal', 'cuota tesoreria',
     ],
+
     'inicio_termino_giro': [
-        'inicio de actividades', 'termino de giro', 'término de giro',
-        'giro comercial',
+        'inicio de actividades', 'inicio de giro',
+        'termino de giro', 'término de giro', 'termino de actividades',
+        'giro comercial', 'modificacion de giro', 'cambio de giro',
+        'ampliar giro', 'eliminar giro',
     ],
-    # Laboral
+
+    # ── LABORAL ────────────────────────────────────────────────────────
+
     'contrato_trabajo': [
-        'contrato de trabajo', 'contrato laboral', 'creacion de contrato',
-        'confeccion de contrato', 'anexo de contrato', 'renovacion de contrato',
-        'jornada laboral', 'nuevo contrato',
+        # Frases completas
+        'contrato de trabajo', 'contrato laboral',
+        'confeccion de contrato', 'creacion de contrato',
+        'renovacion de contrato', 'anexo de contrato',
+        'nuevo contrato', 'actualizar contrato',
+        # Frases cortas — el 80% de los correos reales
+        'el contrato de', 'un contrato para', 'el contrato para',
+        'necesito contrato', 'necesito el contrato', 'me hace el contrato',
+        'me puede hacer el contrato', 'favor hacer contrato',
+        'contrato nuevo', 'contrato del trabajador',
+        'firmar contrato', 'firma del contrato',
+        'jornada laboral', 'jornada de trabajo',
+        'modificar contrato', 'cambio en el contrato',
+        'hacer el contrato', 'preparar contrato',
+        'enviar contrato', 'adjunto contrato', 'te mando contrato',
+        'contrato adjunto',
     ],
+
     'finiquito': [
-        'finiquito', 'confeccion de finiquito', 'creacion de finiquito',
-        'termino de contrato', 'desvinculacion', 'desvinculación',
-        'carta de finiquito',
+        # Frases completas
+        'finiquito', 'carta de finiquito', 'confeccion de finiquito',
+        'creacion de finiquito', 'termino de contrato',
+        'desvinculacion', 'desvinculación',
+        # Cortas pero unívocas — "finiquito" sola es suficiente
+        'el finiquito de', 'un finiquito para', 'hacer el finiquito',
+        'me hace el finiquito', 'necesito el finiquito',
+        'preparar finiquito', 'calcular finiquito',
+        'firmar finiquito', 'firma del finiquito',
+        'finiquito del trabajador', 'finiquito pendiente',
+        'me puede hacer el finiquito',
     ],
+
+    'renuncia': [
+        'renuncia voluntaria', 'carta de renuncia',
+        'renuncia del trabajador', 'trabajador renuncia',
+        'proceso de renuncia', 'renuncia de',
+        'carta renuncia', 'notificacion de renuncia',
+    ],
+
     'despido': [
         'despido', 'carta de despido', 'carta aviso de despido',
         'necesidades de la empresa', 'articulo 161', 'articulo 159',
-        'articulo 160', 'desahucio',
+        'articulo 160', 'desahucio', 'despido justificado',
+        'causal de despido', 'aviso de despido',
     ],
+
     'liquidacion_sueldo': [
+        # Frases completas
         'liquidacion de sueldo', 'liquidacion de remuneraciones',
-        'libro de remuneraciones', 'planilla de sueldos', 'sueldo bruto',
-        'sueldo liquido', 'remuneraciones del mes', 'calculo de sueldo',
-        'gratificacion legal', 'calculo remuneracion',
+        'planilla de sueldos', 'libro de remuneraciones',
+        'calculo de sueldo', 'calculo remuneracion',
+        'gratificacion legal', 'sueldo bruto', 'sueldo liquido',
+        # Cortas — muy comunes en correos reales
+        'liquidacion de', 'las liquidaciones', 'liquidaciones de',
+        'liquidacion del mes', 'liquidacion mensual',
+        'la liquidacion de', 'adjunto liquidacion', 'liquidacion adjunta',
+        'remuneraciones del mes', 'remuneracion de',
+        'adjunto remuneracion', 'planilla de remuneraciones',
+        'calculo de remuneracion', 'calculo de remuneraciones',
+        'sueldos del mes', 'pago de sueldos', 'pago de remuneraciones',
+        'proceso de remuneraciones',
     ],
+
     'licencia_medica': [
-        'licencia medica', 'licencia médica', 'dias de reposo',
-        'subsidio de enfermedad', 'isapre licencia', 'fonasa licencia',
-        'licencia laboral', 'baja medica',
+        'licencia medica', 'licencia médica',
+        'dias de reposo', 'subsidio de enfermedad',
+        'isapre licencia', 'fonasa licencia',
+        'licencia laboral', 'baja medica', 'reposo medico',
+        'la licencia de', 'una licencia', 'licencia del trabajador',
+        'adjunto licencia', 'envio licencia', 'tramitar licencia',
+        'licencia por enfermedad', 'licencia por accidente',
     ],
+
     'vacaciones': [
-        'vacaciones', 'feriado legal', 'dias habiles de vacaciones',
-        'descanso anual', 'feriado progresivo', 'solicitud de vacaciones',
-        'permiso de vacaciones',
+        'vacaciones', 'feriado legal', 'feriado progresivo',
+        'dias habiles de vacaciones', 'descanso anual',
+        'solicitud de vacaciones', 'permiso de vacaciones',
+        'calculo de vacaciones', 'vacaciones del trabajador',
+        'vacaciones pendientes', 'dias de vacaciones',
+        'proporcional de vacaciones',
     ],
+
     'accidente_laboral': [
-        'accidente laboral', 'accidente del trabajo', 'mutual de seguridad',
-        'achs', 'ist seguridad', 'denuncia de accidente',
-        'accidente en faena', 'mutualidad',
+        'accidente laboral', 'accidente del trabajo', 'accidente de trabajo',
+        'mutual de seguridad', 'achs', 'ist seguridad', 'ist chile',
+        'denuncia de accidente', 'accidente en faena',
+        'mutualidad', 'diat', 'protocolo de accidente',
     ],
+
     'direccion_trabajo': [
         'direccion del trabajo', 'dirección del trabajo',
         'inspector del trabajo', 'mediacion laboral',
-        'denuncia laboral', 'dt.gob',
+        'denuncia laboral', 'dt.gob', 'tramite en direccion del trabajo',
+        'inspectoria del trabajo', 'multa de la dt',
     ],
-    # Societario
+
+    # ── SOCIETARIO ────────────────────────────────────────────────────
+
     'constitucion': [
         'constitucion de sociedad', 'constitucion de empresa',
         'escritura de constitucion', 'sociedad limitada', 'sociedad anonima',
-        'spa constitucion', 'nueva sociedad',
+        'spa constitucion', 'nueva sociedad', 'crear sociedad',
+        'crear empresa', 'formar empresa',
+        'sociedad por acciones', 'eirl', 'empresa individual',
     ],
+
     'modificacion': [
         'modificacion de estatutos', 'reforma de estatutos',
         'cambio de razon social', 'modificacion societaria',
+        'cambio de socios', 'aumento de capital', 'disminucion de capital',
+        'modificar la sociedad',
     ],
+
     'poder_notarial': [
         'poder notarial', 'escritura publica', 'notaria',
         'protocolizacion', 'mandato notarial',
+        'ir a la notaria', 'firma en notaria',
+        'ante notario',
     ],
-    # Contabilidad
+
+    # ── CONTABILIDAD ──────────────────────────────────────────────────
+
     'balance': [
         'balance general', 'estado financiero', 'estado de resultados',
         'balance tributario', 'cierre contable', 'balance anual',
+        'estados financieros', 'balance de la empresa',
+        'informe financiero', 'resultado del ejercicio',
+        'cierre del año',
     ],
+
     'libro_contable': [
         'libro diario', 'libro mayor', 'libro de compras',
-        'libro de ventas', 'libro contable',
+        'libro de ventas', 'libro contable', 'libros contables',
+        'contabilidad del mes', 'registros contables',
+        'asiento contable', 'centro de costos',
     ],
+
     'cuentas_cobrar': [
-        'cuentas por cobrar', 'facturas por cobrar', 'deudores',
-        'factura pendiente de pago', 'mora en pago',
+        'cuentas por cobrar', 'facturas por cobrar',
+        'deudores', 'factura pendiente de pago',
+        'mora en pago', 'cobranza', 'clientes morosos',
+        'deuda pendiente',
     ],
+
     'cuentas_pagar': [
         'cuentas por pagar', 'facturas por pagar',
-        'pago pendiente a proveedor', 'vencimiento de pago',
+        'pago a proveedor', 'vencimiento de pago',
+        'pago pendiente', 'proveedor pendiente',
     ],
-    # Documental
+
+    'rendicion': [
+        'rendicion de gastos', 'rendición de gastos',
+        'gastos del mes', 'boletas de gastos',
+        'gastos de representacion', 'rendicion de caja',
+        'caja chica', 'anticipo de gastos',
+        'rendicion mensual',
+    ],
+
+    'comprobante': [
+        'comprobante de pago', 'comprobante de transferencia',
+        'comprobante de deposito', 'adjunto comprobante',
+        'comprobante adjunto', 'te mando el comprobante',
+        'envio comprobante', 'recibo de pago',
+    ],
+
+    # ── DOCUMENTAL ────────────────────────────────────────────────────
+
     'factura': [
+        # Frases de solicitud
         'emitir factura', 'generar factura', 'solicitud de factura',
-        'envio de factura', 'confeccion de factura', 'guia de despacho',
-        'nota de venta', 'ceder factura', 'factura adjunta',
+        'confeccion de factura', 'necesito factura', 'hacer la factura',
+        'me puede emitir', 'favor emitir',
+        # Frases de envío / recepción
+        'envio de factura', 'factura adjunta', 'adjunto factura',
+        'te mando la factura', 'les envio factura',
+        'guia de despacho', 'nota de venta',
+        # Frases de estado
+        'factura pendiente', 'factura sin pagar',
+        'factura vencida', 'ceder factura', 'cesion de factura',
+        # Cortas pero suficientes en contexto contable
+        'la factura de', 'una factura por', 'la factura por',
+        'facturas del mes', 'factura numero',
+        'factura n°', 'factura n.',
     ],
+
     'nota_credito': [
         'nota de credito', 'nota de débito', 'nota de debito',
         'anulacion de factura', 'devolucion factura',
+        'nc de', 'nota credito',
     ],
+
     'certificado': [
-        'certificado de', 'solicitud de certificado', 'certificado tributario',
-        'certificado laboral', 'certificado de vigencia', 'f30', 'f30-1',
+        'certificado de', 'solicitud de certificado',
+        'certificado tributario', 'certificado laboral',
+        'certificado de vigencia', 'f30', 'f30-1',
         'certificado de antecedentes', 'certificado de afiliacion',
+        'certificado de cotizaciones', 'certificado de deuda',
+        'certificado de inicio de actividades',
+        'certificado de situacion tributaria',
+        'necesito certificado', 'solicitar certificado',
+        'obtener certificado',
     ],
+
     'declaracion_jurada': [
-        'declaracion jurada', 'declaración jurada', 'jurada de',
+        'declaracion jurada', 'declaración jurada',
+        'jurada de', 'dj de', 'dj1887', 'dj1879',
+        'declaracion jurada simple',
     ],
-    # Operacional
+
+    'documento_trabajador': [
+        'documento del trabajador', 'documentos del personal',
+        'ficha del trabajador', 'carpeta del trabajador',
+        'datos del trabajador', 'informacion del empleado',
+        'registro del trabajador',
+    ],
+
+    # ── OPERACIONAL ───────────────────────────────────────────────────
+
     'tarea_urgente': [
-        'urgente', 'de urgencia', 'a la brevedad', 'lo antes posible',
-        'vence hoy', 'vence mañana', 'plazo vencido', 'necesito urgente',
-        'es urgente', 'necesitamos urgente',
+        'urgente', 'de urgencia', 'a la brevedad',
+        'lo antes posible', 'lo mas pronto posible', 'lo más pronto posible',
+        'vence hoy', 'vence mañana', 'vence esta semana',
+        'plazo vencido', 'plazo limite', 'plazo límite',
+        'necesito urgente', 'necesitamos urgente',
+        'favor urgente', 'es urgente', 'muy urgente',
+        'solicito urgente', 'requiero urgente',
+        'favor realizar urgente', 'favor enviar urgente',
+        'sin respuesta aun', 'aun sin respuesta',
+        'no hemos recibido', 'estamos esperando',
     ],
+
     'consulta': [
-        'quisiera consultar', 'tengo una consulta', 'me podria informar',
-        'podria indicarme', 'como se hace', 'cual es el procedimiento',
-        'tengo una duda', 'necesito saber',
+        'quisiera consultar', 'tengo una consulta', 'tengo una pregunta',
+        'me podria informar', 'me podrían informar',
+        'podria indicarme', 'podrías indicarme',
+        'como se hace', 'cual es el procedimiento',
+        'tengo una duda', 'necesito saber', 'necesito informacion',
+        'me puede explicar', 'que documentos necesito',
+        'cuanto cuesta', 'cuál es el plazo',
+        'como funciona', 'hay alguna forma de',
     ],
+
     'coordinacion': [
         'agendar reunion', 'coordinar reunion', 'disponibilidad para',
         'nos juntamos', 'videollamada', 'llamada telefonica',
+        'podemos hablar', 'podriamos juntarnos',
+        'zoom', 'meet', 'teams', 'llamada',
+        'cuando podemos', 'tiene disponibilidad',
+        'agendar una llamada',
     ],
+
     'confirmacion': [
         'queda confirmado', 'confirmo recepcion', 'tome nota',
         'documentacion recibida', 'ok listo', 'recibido conforme',
+        'recibido gracias', 'ok muchas gracias', 'perfecto gracias',
+        'conforme', 'acusamos recibo', 'recepcion conforme',
+        'muchas gracias, recibido',
     ],
+
     'seguimiento': [
         'seguimiento a', 'recordatorio de', 'quedamos pendientes',
         'hay novedades', 'en que estado esta', 'como va el tramite',
+        'como va', 'alguna novedad', 'me puede actualizar',
+        'reiterarle mi solicitud', 'reitero mi solicitud',
+        'sigo esperando', 'aun no he recibido',
+        'me pueden informar el estado',
     ],
-    # Automático
+
+    'solicitud_fondos': [
+        'solicitud de fondos', 'solicito fondos',
+        'transferencia de fondos', 'solicito transferencia',
+        'necesito fondos', 'anticipo de honorarios',
+        'honorarios pendientes', 'cobro de honorarios',
+        'boleta de honorarios', 'emitir boleta de honorarios',
+    ],
+
+    # ── AUTOMÁTICOS ───────────────────────────────────────────────────
+
     'notificacion_sii': [
-        'no-reply@sii.cl', 'notificacion de sii', 'cedible electronico',
-        'acuse de recibo sii', 'sii.cl notifica',
+        'no-reply@sii.cl', 'notificacion de sii',
+        'cedible electronico', 'acuse de recibo sii',
+        'sii.cl notifica', 'sii informa',
+        'notificacion electronica sii',
     ],
+
     'notificacion_banco': [
-        'transferencia recibida', 'abono en cuenta', 'cargo en cuenta',
-        'estado de cuenta bancario', 'cartola bancaria', 'comprobante transferencia',
+        'transferencia recibida', 'abono en cuenta',
+        'cargo en cuenta', 'estado de cuenta bancario',
+        'cartola bancaria', 'comprobante transferencia',
+        'transaccion exitosa', 'pago realizado exitosamente',
+        'banco estado', 'banco de chile', 'bci informa',
+        'scotiabank', 'santander informa',
     ],
+
     'notificacion_prevision': [
         'cotizacion previsional', 'previred', 'pago afp',
         'isapre cotizacion', 'pago prevision',
+        'cotizaciones del mes', 'pago de cotizaciones',
+        'afp informa', 'isapre informa',
     ],
+
     'spam': [
-        'unsubscribe', 'darse de baja de esta lista', 'oferta exclusiva para',
-        'gana dinero', 'haz clic aqui', 'promocion especial limitada',
+        'unsubscribe', 'darse de baja de esta lista',
+        'oferta exclusiva para', 'gana dinero', 'haz clic aqui',
+        'promocion especial limitada', 'precio especial',
+        'click here to unsubscribe', 'this is a promotional',
     ],
 }
 
-# Peso extra para matches en el asunto (subject)
-PESO_ASUNTO = 4
+# Peso extra para matches en el asunto
+PESO_ASUNTO = 5
 PESO_CUERPO = 1
+
+# Keywords que SOLO se evalúan en el asunto (evitan falsos positivos en cuerpo)
+# por ser términos muy cortos o ambiguos
+SOLO_ASUNTO_KEYWORDS: dict[str, list[str]] = {
+    'liquidacion_sueldo': ['liquidacion', 'remuneracion', 'remuneraciones'],
+    'contrato_trabajo':   ['contrato'],
+    'finiquito':          [],   # "finiquito" es suficientemente específica
+    'factura':            ['factura', 'facturas'],
+    'vacaciones':         ['vacaciones'],
+    'licencia_medica':    ['licencia'],
+    'certificado':        ['certificado'],
+    'f29':                ['iva'],
+    'tarea_urgente':      [],
+}
 
 TONO_KEYWORDS = {
     'urgente': [
@@ -183,11 +413,12 @@ TONO_KEYWORDS = {
     'formal': [
         'estimado', 'distinguido', 'cordialmente', 'atentamente',
         'saludos cordiales', 'me dirijo a usted', 'mediante la presente',
-        'de mi consideracion',
+        'de mi consideracion', 'de mi más alta consideración',
     ],
     'informal': [
-        'hola', 'buen dia', 'buenas tardes', 'buenos dias',
-        'gracias cynthia', 'gracias jose', 'saludos',
+        'hola', 'buen dia', 'buenos dias', 'buenas tardes',
+        'buenas!', 'buenas,', 'gracias', 'saludos',
+        'espero que estés bien', 'espero que este bien',
     ],
     'tecnico': [
         'servidor', 'base de datos', 'configuracion del sistema',
@@ -206,16 +437,17 @@ DOMINIOS_PUBLICOS = [
     'cmfchile.cl', 'bcn.cl', 'gob.cl', 'chile.cl',
 ]
 
-# Pendientes — solo si aparecen en cuerpo REAL (no en texto citado)
-# y son frases que expresan una SOLICITUD ACTIVA
 PENDIENTE_KEYWORDS = [
     'urgente', 'de urgencia', 'a la brevedad',
-    'lo antes posible', 'plazo vencido', 'vence hoy', 'vence mañana',
+    'lo antes posible', 'lo más pronto posible', 'lo mas pronto posible',
+    'vence hoy', 'vence mañana', 'plazo vencido',
     'necesito urgente', 'necesitamos urgente',
     'favor enviar de manera urgente', 'favor realizar urgente',
-    'sin respuesta aun', 'no hemos recibido respuesta',
-    'estamos esperando respuesta', 'aun no recibimos',
+    'sin respuesta aun', 'aun sin respuesta',
+    'no hemos recibido respuesta', 'estamos esperando respuesta',
+    'aun no recibimos', 'sigo esperando',
     'solicito de forma urgente', 'solicito a usted de forma urgente',
+    'reitero mi solicitud', 'reiterarle mi solicitud',
 ]
 
 RUT_PATTERN = re.compile(r'\b\d{1,2}\.?\d{3}\.?\d{3}-?[\dkK]\b')
@@ -234,13 +466,10 @@ def limpiar_cuerpo(cuerpo: str) -> str:
     limpias = []
     for linea in lineas:
         stripped = linea.strip()
-        # omitir líneas citadas
         if stripped.startswith('>'):
             continue
-        # omitir líneas de firma típica
         if re.match(r'^(atte\.|atentamente|saludos,?|regards|--\s*$)', stripped, re.IGNORECASE):
             break
-        # omitir líneas de encabezado de respuesta citada
         if re.match(r'^(de:|para:|enviado el:|from:|sent:|on .* wrote:)', stripped, re.IGNORECASE):
             break
         limpias.append(linea)
@@ -248,19 +477,11 @@ def limpiar_cuerpo(cuerpo: str) -> str:
 
 
 def limpiar_nombre(nombre_raw: str, email_addr: str) -> str:
-    """
-    Limpia el nombre del remitente.
-    Si el display name es igual al email o está vacío, retorna vacío
-    para que se pueda completar más adelante.
-    """
     nombre = nombre_raw.strip().strip('"').strip("'")
-    # Si el nombre es igual al email, no sirve
     if nombre.lower() == email_addr.lower():
         return ''
-    # Si tiene formato email dentro del nombre
     if '@' in nombre:
         return ''
-    # Si es muy corto, probablemente no es un nombre real
     if len(nombre) < 3:
         return ''
     return nombre
@@ -278,20 +499,27 @@ def detectar_rut(texto: str) -> str:
 def detectar_tema(asunto: str, cuerpo: str) -> str:
     """
     Clasifica dando más peso al asunto que al cuerpo.
-    Usa solo cuerpo limpio (sin texto citado).
+    Aplica keywords cortas solo en el asunto para evitar falsos positivos.
     """
     cuerpo_limpio = limpiar_cuerpo(cuerpo)
     asunto_l = asunto.lower()
-    cuerpo_l = cuerpo_limpio[:600].lower()
+    cuerpo_l = cuerpo_limpio[:800].lower()
 
-    puntajes = {tema: 0 for tema in TEMAS_KEYWORDS}
+    puntajes: dict[str, float] = {tema: 0 for tema in TEMAS_KEYWORDS}
 
+    # Keywords principales en asunto y cuerpo
     for tema, keywords in TEMAS_KEYWORDS.items():
         for kw in keywords:
             if kw in asunto_l:
                 puntajes[tema] += PESO_ASUNTO
-            if kw in cuerpo_l:
+            elif kw in cuerpo_l:
                 puntajes[tema] += PESO_CUERPO
+
+    # Keywords cortas solo en asunto (más confiables ahí)
+    for tema, keywords in SOLO_ASUNTO_KEYWORDS.items():
+        for kw in keywords:
+            if kw in asunto_l:
+                puntajes[tema] += PESO_ASUNTO
 
     # tarea_urgente tiene prioridad si aparece en el asunto
     if puntajes.get('tarea_urgente', 0) >= PESO_ASUNTO:
@@ -303,9 +531,8 @@ def detectar_tema(asunto: str, cuerpo: str) -> str:
 
 def detectar_tono(asunto: str, cuerpo: str) -> str:
     cuerpo_limpio = limpiar_cuerpo(cuerpo)
-    texto = (asunto + ' ' + cuerpo_limpio[:300]).lower()
+    texto = (asunto + ' ' + cuerpo_limpio[:400]).lower()
 
-    # urgente tiene prioridad
     for kw in TONO_KEYWORDS['urgente']:
         if kw in texto:
             return 'urgente'
@@ -324,10 +551,10 @@ def es_pendiente(asunto: str, cuerpo: str) -> bool:
     """
     Solo marca como pendiente si la keyword aparece en:
     1. El asunto, O
-    2. Las primeras 300 palabras del cuerpo LIMPIO (sin citas)
+    2. Las primeras 500 palabras del cuerpo LIMPIO (sin citas)
     """
     cuerpo_limpio = limpiar_cuerpo(cuerpo)
-    texto = (asunto + ' ' + cuerpo_limpio[:500]).lower()
+    texto = (asunto + ' ' + cuerpo_limpio[:600]).lower()
     return any(p in texto for p in PENDIENTE_KEYWORDS)
 
 
