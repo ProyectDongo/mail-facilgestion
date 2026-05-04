@@ -177,7 +177,7 @@ def clasificar_pendientes():
 
     LIMITE_PENDIENTE = timezone.now() - timedelta(days=30)
 
-    correos = CorreoCopia.objects.filter(clasificado=False).select_related('remitente')[:200]
+    correos = CorreoCopia.objects.filter(clasificado=False).select_related('remitente')[:30]
     procesados = 0
     perfiles_afectados = set()
 
