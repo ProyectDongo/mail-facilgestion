@@ -27,11 +27,13 @@ TEMAS_KEYWORDS = {
         'operacion renta', 'renta anual',
     ],
     'ppm': ['ppm', 'pago provisional', 'pagos provisionales mensuales'],
+
     'sii': [
         'sii', 'servicio de impuestos', 'timbre', 'folio',
         'contribuyente', 'boleta electronica', 'factura electronica',
         'sii.cl', 'cedible', 'acuse de recibo sii',
-        'f.30', 'f30', 'creacion de obra',
+        'f.30', 'f30', 'creacion de obra','carpeta tributaria', 'solicitud de carpeta tributaria',
+        'tramites rel', 'intranet', 'tramites sii', 'tramite sii', 'sii tramites',
     ],
     'tgr': [
         'tgr', 'tesoreria', 'tesorería', 'deuda fiscal',
@@ -49,7 +51,11 @@ TEMAS_KEYWORDS = {
         'jornada laboral', 'contratacion', 'parametros',
         'solicitud de parametros', 'modificacion de liquidacion',
         'solicitud de anexo', 'anexo horario', 'anexo firmado',
-        'creacion de anexo',
+        'creacion de anexo','solicitud de contrato', 'solicitud de creacion de contrato',
+        'contrato de sandra', 'contratacion y anexos', 'generar contrato',
+        'solicitud de extension de contrato', 'informacion para contrato',
+        'documento cambio de dia', 'anexos', 'contratos',
+        'solicitud de rol', 'aumento de sueldo', 'cambio de cargo', 'cambio de jornada',
     ],
     'finiquito': [
         'finiquito', 'termino contrato', 'término contrato',
@@ -75,7 +81,10 @@ TEMAS_KEYWORDS = {
         'gratificacion', 'bono', 'informacion para liquidacion',
         'nomina', 'nómina', 'estado de pago', 'pagos mensuales',
         'ventas noviembre', 'ventas octubre', 'ventas mes',
-        'proyeccion cierre',
+        'proyeccion cierre','solicitud de liquidacion', 'liquidacion y anexo',
+        'anticipos', 'anticipos mes', 'pago pensiones',
+        'auxiliar cta clientes', 'planilla de costos',
+        'compras enero', 'libros de compra ventas',
     ],
     'licencia_medica': [
         'licencia medica', 'licencia médica', 'reposo',
@@ -96,7 +105,9 @@ TEMAS_KEYWORDS = {
         'direccion del trabajo', 'dirección del trabajo',
         'inspector del trabajo', 'mediacion laboral',
         'denuncia laboral', 'auditoria laboral', 'auditorias laborales',
-        'envio de documentacion auditoria',
+        'envio de documentacion auditoria','notificacion reclamo', 'notificación de reclamo',
+        'proceso de licitacion', 'causa romero',
+        'carta notificacion decreto',
     ],
     'constitucion': [
         'constitucion de sociedad', 'constitución de sociedad',
@@ -143,6 +154,8 @@ TEMAS_KEYWORDS = {
         'documento tributario', 'dte', 'solicitud de boleta',
         'solicitud de guia', 'guia de despacho', 'detalle boletas',
         'boletas de garantia', 'anular guia',
+        'orden de compra', 'cotizacion', 'factoring',
+        'creacion de destinatario pyme', 'envio cotizacion',
     ],
     'nota_credito': [
         'nota de credito', 'nota de débito', 'nota de debito',
@@ -152,6 +165,9 @@ TEMAS_KEYWORDS = {
         'certificado', 'certificacion', 'constancia',
         'acreditacion', 'vbo', 'vºbº', 'firma cuota',
         'nomina colegiados', 'nómina colegiados',
+        'pago bienestar', 'cuota regional', 'pago rifa',
+        'doctos navidad', 'gastos aniversario',
+        'autorización de firmas', 'autorizacion de firmas',
     ],
     'declaracion_jurada': [
         'declaracion jurada', 'declaración jurada', ' dj ',
@@ -178,7 +194,8 @@ TEMAS_KEYWORDS = {
     'coordinacion': [
         'reunion', 'reunión', 'llamada', 'videollamada',
         'nos juntamos', 'disponibilidad', 'capacitacion',
-        'invitacion a capacitacion',
+        'invitacion a capacitacion','invitacion a capacitacion', 'superir',
+        'compra de camioneta',
     ],
     'confirmacion': [
         'confirmado', 'recibido', 'queda confirmado',
@@ -192,6 +209,8 @@ TEMAS_KEYWORDS = {
         'solicitud de fondos', 'transferencia', 'transferencias',
         'cartola', 'cartola bci', 'estado de cuenta',
         'abono', 'cargo en cuenta',
+        'pago rifa', 'pago bienestar',
+        'anticipos', 'rifa',
     ],
     'notificacion_sii': [
         'notificacion sii', 'no-reply@sii.cl',
@@ -207,14 +226,20 @@ TEMAS_KEYWORDS = {
         'afp', 'cotizacion previsional', 'previred',
         'fonasa', 'isapre cotizacion', 'cotizaciones de salud',
         'pago cotizaciones', 'trabajadores no vigentes',
-        'nueva masvida',
+        'nueva masvida','deuda por cotizaciones', 'cotizaciones de seguridad social',
+        'nueva cotizacion de cargo', 'webinar',
+        'prestamo blando',
     ],
     'spam': [
         'unsubscribe', 'darse de baja', 'oferta exclusiva',
         'gana dinero', 'click aqui', 'promocion especial',
         'message delivery failure', 'mail delivery system',
         'corona de caridad', 'tu opinion vale oro',
-        'lista regalos rifa', 'foto de',
+        'lista regalos rifa', 'foto de','mensaje de prueba', 'microsoft outlook',
+        'comunidad de edificio', 'cosmocentro',
+        'smart tv', 'tiko tiki', 'parrilla',
+        'desayuno exclusivo', 'rrhh defontana',
+        'link nuevo', 'link',
     ],
 }
 
